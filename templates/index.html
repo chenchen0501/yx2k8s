@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>云效 K8s 自动部署</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .status-card {
+            background: #f7f9fc;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .status-text {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        .status-idle {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-running {
+            background: #fff3e0;
+            color: #f57c00;
+            animation: pulse 2s infinite;
+        }
+
+        .status-success {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .status-error {
+            background: #ffebee;
+            color: #d32f2f;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .deploy-btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .deploy-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .deploy-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .deploy-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .logs-container {
+            background: #1e1e1e;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: "Consolas", "Monaco", monospace;
+            font-size: 13px;
+        }
+
+        .logs-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .logs-container::-webkit-scrollbar-track {
+            background: #2d2d2d;
+            border-radius: 4px;
+        }
+
+        .logs-container::-webkit-scrollbar-thumb {
+            background: #555;
+            border-radius: 4px;
+        }
+
+        .logs-container::-webkit-scrollbar-thumb:hover {
+            background: #777;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            line-height: 1.6;
+            padding: 4px 0;
+        }
+
+        .log-time {
+            color: #888;
+            margin-right: 10px;
+        }
+
+        .log-level {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            min-width: 60px;
+            text-align: center;
+        }
+
+        .log-level-INFO {
+            background: #1976d2;
+            color: white;
+        }
+
+        .log-level-SUCCESS {
+            background: #388e3c;
+            color: white;
+        }
+
+        .log-level-WARNING {
+            background: #f57c00;
+            color: white;
+        }
+
+        .log-level-ERROR {
+            background: #d32f2f;
+            color: white;
+        }
+
+        .log-message {
+            color: #e0e0e0;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #f57c00;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-logs {
+            color: #888;
+            text-align: center;
+            padding: 40px;
+            font-style: italic;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 13px;
+            border-top: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 云效 K8s 自动部署</h1>
+            <p>点击按钮触发云效构建并自动更新 K8s 镜像版本</p>
+        </div>
+
+        <div class="content">
+            <!-- 状态卡片 -->
+            <div class="status-card">
+                <h3>📊 当前状态</h3>
+                <div class="status-text" id="statusText">系统就绪</div>
+                <div>
+                    <span class="status-badge status-idle" id="statusBadge">空闲</span>
+                </div>
+            </div>
+
+            <!-- 部署按钮 -->
+            <button class="deploy-btn" id="deployBtn" onclick="startDeploy()">
+                ▶ 开始部署
+            </button>
+
+            <!-- 日志区域 -->
+            <div class="logs-container" id="logsContainer">
+                <div class="empty-logs">暂无日志</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            云效到 K8s 镜像版本自动更新工具 | Powered by Flask + Socket.IO
+        </div>
+    </div>
+
+    <script>
+        // 连接 WebSocket
+        const socket = io();
+        let isRunning = false;
+
+        // 连接成功
+        socket.on('connected', (data) => {
+            console.log('WebSocket 连接成功:', data);
+        });
+
+        // 接收任务状态更新
+        socket.on('task_status', (data) => {
+            console.log('任务状态:', data);
+            updateStatus(data);
+        });
+
+        // 接收日志
+        socket.on('log', (log) => {
+            appendLog(log);
+        });
+
+        // 更新状态显示
+        function updateStatus(data) {
+            const statusText = document.getElementById('statusText');
+            const statusBadge = document.getElementById('statusBadge');
+            const deployBtn = document.getElementById('deployBtn');
+
+            if (data.status === 'running') {
+                isRunning = true;
+                statusText.innerHTML = '<span class="loading-spinner"></span>部署任务执行中...';
+                statusBadge.textContent = '执行中';
+                statusBadge.className = 'status-badge status-running';
+                deployBtn.disabled = true;
+                deployBtn.textContent = '⏸ 执行中...';
+            } else if (data.status === 'success') {
+                isRunning = false;
+                statusText.textContent = '部署任务执行成功!';
+                statusBadge.textContent = '成功';
+                statusBadge.className = 'status-badge status-success';
+                deployBtn.disabled = false;
+                deployBtn.textContent = '▶ 开始部署';
+            } else if (data.status === 'error') {
+                isRunning = false;
+                statusText.textContent = '部署任务执行失败: ' + (data.error || '未知错误');
+                statusBadge.textContent = '失败';
+                statusBadge.className = 'status-badge status-error';
+                deployBtn.disabled = false;
+                deployBtn.textContent = '▶ 重试部署';
+            } else {
+                isRunning = false;
+                statusText.textContent = '系统就绪';
+                statusBadge.textContent = '空闲';
+                statusBadge.className = 'status-badge status-idle';
+                deployBtn.disabled = false;
+                deployBtn.textContent = '▶ 开始部署';
+            }
+        }
+
+        // 添加日志
+        function appendLog(log) {
+            const logsContainer = document.getElementById('logsContainer');
+
+            // 移除空日志提示
+            const emptyLogs = logsContainer.querySelector('.empty-logs');
+            if (emptyLogs) {
+                emptyLogs.remove();
+            }
+
+            // 创建日志条目
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'log-time';
+            timeSpan.textContent = log.timestamp;
+
+            const levelSpan = document.createElement('span');
+            levelSpan.className = `log-level log-level-${log.level}`;
+            levelSpan.textContent = log.level;
+
+            const messageSpan = document.createElement('span');
+            messageSpan.className = 'log-message';
+            messageSpan.textContent = log.message;
+
+            logEntry.appendChild(timeSpan);
+            logEntry.appendChild(levelSpan);
+            logEntry.appendChild(messageSpan);
+
+            logsContainer.appendChild(logEntry);
+
+            // 自动滚动到底部
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        // 开始部署
+        async function startDeploy() {
+            if (isRunning) {
+                alert('已有任务正在执行中,请稍后再试');
+                return;
+            }
+
+            if (!confirm('确定要开始部署吗?')) {
+                return;
+            }
+
+            // 清空日志
+            const logsContainer = document.getElementById('logsContainer');
+            logsContainer.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/deploy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message);
+                }
+            } catch (error) {
+                console.error('启动部署失败:', error);
+                alert('启动部署失败: ' + error.message);
+            }
+        }
+
+        // 页面加载时获取当前状态
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/status');
+                const status = await response.json();
+
+                if (status.running) {
+                    updateStatus({ status: 'running' });
+                }
+            } catch (error) {
+                console.error('获取状态失败:', error);
+            }
+        });
+    </script>
+</body>
+</html>
