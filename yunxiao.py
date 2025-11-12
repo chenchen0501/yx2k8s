@@ -46,20 +46,20 @@ async def trigger_build_and_fetch_tag(page: Page) -> str:
             pass  # 如果没有弹窗或关闭失败,继续执行
 
         # # 2. 点击【运行】按钮
-        # log("点击【运行】按钮...", "PROGRESS")
-        # run_button = page.locator('button:has-text("运行")').first
-        # await run_button.click(timeout=config.OPERATION_TIMEOUT)
+        log("点击【运行】按钮...", "PROGRESS")
+        run_button = page.locator('button:has-text("运行")').first
+        await run_button.click(timeout=config.OPERATION_TIMEOUT)
 
-        # # 3. 等待"运行配置"弹窗出现
-        # await page.wait_for_selector('text=运行配置', state='visible', timeout=config.OPERATION_TIMEOUT)
+        # 3. 等待"运行配置"弹窗出现
+        await page.wait_for_selector('text=运行配置', state='visible', timeout=config.OPERATION_TIMEOUT)
 
-        # # 4. 在弹窗中点击【运行】按钮(确认)
-        # log("确认运行配置...", "PROGRESS")
-        # confirm_button = page.locator('.next-dialog >> button:has-text("运行")')
-        # await confirm_button.click(timeout=config.OPERATION_TIMEOUT)
+        # 4. 在弹窗中点击【运行】按钮(确认)
+        log("确认运行配置...", "PROGRESS")
+        confirm_button = page.locator('.next-dialog >> button:has-text("运行")')
+        await confirm_button.click(timeout=config.OPERATION_TIMEOUT)
 
-        # # 5. 等待弹窗关闭
-        # await page.wait_for_selector('text=运行配置', state='hidden', timeout=config.OPERATION_TIMEOUT)
+        # 5. 等待弹窗关闭
+        await page.wait_for_selector('text=运行配置', state='hidden', timeout=config.OPERATION_TIMEOUT)
 
         # 6. 等待构建完成
         log("等待构建完成(最长5分钟)...", "WAITING")
@@ -97,6 +97,9 @@ async def trigger_build_and_fetch_tag(page: Page) -> str:
         # 7. 展开构建日志
         log("查找并展开构建日志...", "PROGRESS")
 
+        await page.locator('text=日志').first.click(timeout=5000)
+        await page.wait_for_timeout(2000)
+
         # 策略: 依次尝试多种方式打开日志
         log_opened = False
 
@@ -116,42 +119,7 @@ async def trigger_build_and_fetch_tag(page: Page) -> str:
         except Exception as e:
             log(f"方式1失败: {str(e)}", "WARNING")
 
-        # 方式2: 如果方式1失败,尝试点击"构建推送"区域
-        if not log_opened:
-            try:
-                log("尝试点击构建推送区域...", "INFO")
-                build_area = page.get_by_text("构建推送", exact=False).first
-                await build_area.click(timeout=5000)
-                await page.wait_for_timeout(2000)
-
-                # 再次尝试找日志项
-                log_elements = page.get_by_text("镜像构建并推送", exact=False)
-                if await log_elements.count() > 0:
-                    await log_elements.first.click(timeout=5000)
-                    await page.wait_for_timeout(2000)
-                    log_opened = True
-                    log("成功点击日志项", "SUCCESS")
-            except Exception as e:
-                log(f"方式2失败: {str(e)}", "WARNING")
-
-        # 方式3: 尝试点击页面左侧的折叠面板
-        if not log_opened:
-            try:
-                log("尝试展开流水线源面板...", "INFO")
-                # 点击"流水线源"文字或其父元素
-                await page.locator('text=流水线源').first.click(timeout=5000)
-                await page.wait_for_timeout(2000)
-
-                # 再次查找日志项
-                log_elements = page.get_by_text("镜像构建并推送", exact=False)
-                if await log_elements.count() > 0:
-                    await log_elements.first.click(timeout=5000)
-                    await page.wait_for_timeout(2000)
-                    log_opened = True
-                    log("成功点击日志项", "SUCCESS")
-            except Exception as e:
-                log(f"方式3失败: {str(e)}", "WARNING")
-
+       
         # 8. 尝试获取版本号 - 多种方式
         log("尝试提取版本号...", "PROGRESS")
         tag = None
@@ -159,17 +127,27 @@ async def trigger_build_and_fetch_tag(page: Page) -> str:
         # 方式A: 如果日志已打开,从日志弹窗获取
         if log_opened:
             try:
-                await page.wait_for_selector('.log-container_body', state='visible', timeout=10000)
-                log_container = page.locator('.log-container_body')
+                # 右侧日志正文容器：class="log-panel__context right" 位于 .log-container__body 下
+                await page.wait_for_selector('.log-container__body .log-panel__context.right', state='visible', timeout=10000)
+                log_container = page.locator('.log-container__body .log-panel__context.right').first
 
                 # 滚动到日志底部(版本号通常在最后)
                 log("滚动日志到底部...", "INFO")
-                await log_container.evaluate('element => element.scrollTop = element.scrollHeight')
-                await page.wait_for_timeout(1000)  # 等待滚动完成
+                # 方式1：直接设置 scrollTop
+                await log_container.evaluate('el => { el.scrollTop = el.scrollHeight }')
+                await page.wait_for_timeout(600)  # 等待滚动完成
 
                 # 再次滚动确保到底
-                await log_container.evaluate('element => element.scrollTop = element.scrollHeight')
-                await page.wait_for_timeout(500)
+                await log_container.evaluate('el => { el.scrollTop = el.scrollHeight }')
+                await page.wait_for_timeout(300)
+
+                # 方式2（兜底）：将最后一行滚动到可视区域
+                try:
+                    last_line = page.locator('.log-container__body .log-panel__context.right > div').last
+                    await last_line.scroll_into_view_if_needed(timeout=2000)
+                    await page.wait_for_timeout(300)
+                except:
+                    pass
 
                 # 获取日志文本
                 log_text = await log_container.inner_text()
@@ -180,32 +158,6 @@ async def trigger_build_and_fetch_tag(page: Page) -> str:
                     log(f"从日志弹窗获取到版本号: {tag}", "SUCCESS")
             except Exception as e:
                 log(f"从日志弹窗获取版本号失败: {str(e)}", "WARNING")
-
-        # 方式B: 从页面源码中查找
-        if not tag:
-            try:
-                log("尝试从页面源码中查找版本号...", "INFO")
-                page_content = await page.content()
-
-                match = re.search(config.TAG_PATTERN, page_content)
-                if match:
-                    tag = match.group(1)
-                    log(f"从页面源码获取到版本号: {tag}", "SUCCESS")
-            except Exception as e:
-                log(f"从页面源码获取版本号失败: {str(e)}", "WARNING")
-
-        # 方式C: 从页面所有文本中查找
-        if not tag:
-            try:
-                log("尝试从页面全部文本中查找版本号...", "INFO")
-                all_text = await page.locator('body').inner_text()
-
-                match = re.search(config.TAG_PATTERN, all_text)
-                if match:
-                    tag = match.group(1)
-                    log(f"从页面文本获取到版本号: {tag}", "SUCCESS")
-            except Exception as e:
-                log(f"从页面文本获取版本号失败: {str(e)}", "WARNING")
 
         # 如果所有方式都失败
         if not tag:
