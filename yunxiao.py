@@ -7,12 +7,13 @@ import config
 from utils import log, take_screenshot
 
 
-async def trigger_build_and_fetch_tag(page: Page) -> str:
+async def trigger_build_and_fetch_tag(page: Page, skip_trigger: bool = False) -> str:
     """
     触发云效构建并获取镜像版本号
 
     Args:
         page: Playwright Page 对象
+        skip_trigger: 是否跳过触发构建,仅获取最近一次构建的版本号 (默认 False)
 
     Returns:
         镜像版本号 (例: dev-2025-11-12-14-20-32)
@@ -45,21 +46,24 @@ async def trigger_build_and_fetch_tag(page: Page) -> str:
         except:
             pass  # 如果没有弹窗或关闭失败,继续执行
 
-        # # 2. 点击【运行】按钮
-        log("点击【运行】按钮...", "PROGRESS")
-        run_button = page.locator('button:has-text("运行")').first
-        await run_button.click(timeout=config.OPERATION_TIMEOUT)
+        if not skip_trigger:
+            # 2. 点击【运行】按钮(触发新构建)
+            log("点击【运行】按钮...", "PROGRESS")
+            run_button = page.locator('button:has-text("运行")').first
+            await run_button.click(timeout=config.OPERATION_TIMEOUT)
 
-        # 3. 等待"运行配置"弹窗出现
-        await page.wait_for_selector('text=运行配置', state='visible', timeout=config.OPERATION_TIMEOUT)
+            # 3. 等待"运行配置"弹窗出现
+            await page.wait_for_selector('text=运行配置', state='visible', timeout=config.OPERATION_TIMEOUT)
 
-        # 4. 在弹窗中点击【运行】按钮(确认)
-        log("确认运行配置...", "PROGRESS")
-        confirm_button = page.locator('.next-dialog >> button:has-text("运行")')
-        await confirm_button.click(timeout=config.OPERATION_TIMEOUT)
+            # 4. 在弹窗中点击【运行】按钮(确认)
+            log("确认运行配置...", "PROGRESS")
+            confirm_button = page.locator('.next-dialog >> button:has-text("运行")')
+            await confirm_button.click(timeout=config.OPERATION_TIMEOUT)
 
-        # 5. 等待弹窗关闭
-        await page.wait_for_selector('text=运行配置', state='hidden', timeout=config.OPERATION_TIMEOUT)
+            # 5. 等待弹窗关闭
+            await page.wait_for_selector('text=运行配置', state='hidden', timeout=config.OPERATION_TIMEOUT)
+        else:
+            log("⏭️  跳过触发构建,将从最近一次构建中获取版本号", "INFO")
 
         # 6. 等待构建完成
         log("等待构建完成(最长5分钟)...", "WAITING")

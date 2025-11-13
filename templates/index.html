@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>云效 K8s 自动部署</title>
+    <title>yx2k8s - 云效 K8s 自动部署</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * {
@@ -241,6 +241,74 @@
             font-size: 13px;
             border-top: 1px solid #eee;
         }
+
+        /* 任务选择样式 */
+        .task-group {
+            margin-bottom: 20px;
+        }
+
+        .task-group:last-of-type {
+            margin-bottom: 0;
+        }
+
+        .task-group-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 12px;
+            font-size: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .task-checkboxes {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .task-checkbox {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            transition: background 0.2s;
+            user-select: none;
+        }
+
+        .task-checkbox:hover {
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .task-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+
+        .task-checkbox span {
+            font-size: 14px;
+            color: #555;
+        }
+
+        .quick-btn {
+            padding: 8px 16px;
+            font-size: 13px;
+            color: #667eea;
+            background: white;
+            border: 1px solid #667eea;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+
+        .quick-btn:hover {
+            background: #667eea;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -260,10 +328,61 @@
                 </div>
             </div>
 
-            <!-- 部署按钮 -->
-            <button class="deploy-btn" id="deployBtn" onclick="startDeploy()">
-                ▶ 开始部署
-            </button>
+            <!-- 前端任务卡片 -->
+            <div class="status-card" style="border-left-color: #667eea;">
+                <h3>🎯 前端部署 (Frontend)</h3>
+
+                <div class="task-checkboxes">
+                    <label class="task-checkbox" style="background: #fff3e0; border: 1px solid #ff9800;">
+                        <input type="checkbox" id="frontendRunBuild" checked>
+                        <span style="font-weight: 600; color: #ff6f00;">🚀 云效运行</span>
+                    </label>
+                    <label class="task-checkbox">
+                        <input type="checkbox" class="task-select-frontend" value="frontend-test" checked>
+                        <span>测试环境 (Test)</span>
+                    </label>
+                    <label class="task-checkbox">
+                        <input type="checkbox" class="task-select-frontend" value="frontend-prod" checked>
+                        <span>生产环境 (Prod)</span>
+                    </label>
+                </div>
+                <div style="font-size: 12px; color: #666; margin-top: 8px; margin-left: 12px;">
+                    💡 取消"云效运行"将跳过触发新构建,使用最近一次构建的版本号
+                </div>
+
+                <!-- 前端部署按钮 -->
+                <button class="deploy-btn" style="margin-top: 15px;" id="deployFrontendBtn" onclick="startDeployFrontend()">
+                    ▶ 开始前端部署
+                </button>
+            </div>
+
+            <!-- 后端任务卡片 -->
+            <div class="status-card" style="border-left-color: #4caf50;">
+                <h3>🎯 后端部署 (Backend)</h3>
+
+                <div class="task-checkboxes">
+                    <label class="task-checkbox" style="background: #fff3e0; border: 1px solid #ff9800;">
+                        <input type="checkbox" id="backendRunBuild" checked>
+                        <span style="font-weight: 600; color: #ff6f00;">🚀 云效运行</span>
+                    </label>
+                    <label class="task-checkbox">
+                        <input type="checkbox" class="task-select-backend" value="backend-test" checked>
+                        <span>测试环境 (Test)</span>
+                    </label>
+                    <label class="task-checkbox">
+                        <input type="checkbox" class="task-select-backend" value="backend-prod" checked>
+                        <span>生产环境 (Prod)</span>
+                    </label>
+                </div>
+                <div style="font-size: 12px; color: #666; margin-top: 8px; margin-left: 12px;">
+                    💡 取消"云效运行"将跳过触发新构建,使用最近一次构建的版本号
+                </div>
+
+                <!-- 后端部署按钮 -->
+                <button class="deploy-btn" style="margin-top: 15px;" id="deployBackendBtn" onclick="startDeployBackend()">
+                    ▶ 开始后端部署
+                </button>
+            </div>
 
             <!-- 日志区域 -->
             <div class="logs-container" id="logsContainer">
@@ -370,14 +489,68 @@
             logsContainer.scrollTop = logsContainer.scrollHeight;
         }
 
-        // 开始部署
-        async function startDeploy() {
+        // 获取前端选中的任务
+        function getFrontendTasks() {
+            const checkboxes = document.querySelectorAll('.task-select-frontend:checked');
+            const frontendRunBuild = document.getElementById('frontendRunBuild').checked;
+
+            return Array.from(checkboxes).map(cb => ({
+                task_id: cb.value,
+                run_build: frontendRunBuild
+            }));
+        }
+
+        // 获取后端选中的任务
+        function getBackendTasks() {
+            const checkboxes = document.querySelectorAll('.task-select-backend:checked');
+            const backendRunBuild = document.getElementById('backendRunBuild').checked;
+
+            return Array.from(checkboxes).map(cb => ({
+                task_id: cb.value,
+                run_build: backendRunBuild
+            }));
+        }
+
+        // 开始前端部署
+        async function startDeployFrontend() {
+            await executeDeploy(getFrontendTasks(), '前端');
+        }
+
+        // 开始后端部署
+        async function startDeployBackend() {
+            await executeDeploy(getBackendTasks(), '后端');
+        }
+
+        // 执行部署
+        async function executeDeploy(selectedTasks, label) {
             if (isRunning) {
                 alert('已有任务正在执行中,请稍后再试');
                 return;
             }
 
-            if (!confirm('确定要开始部署吗?')) {
+            if (selectedTasks.length === 0) {
+                alert(`请至少选择一个${label}任务!`);
+                return;
+            }
+
+            // 显示任务列表
+            const taskNames = {
+                'frontend-test': '前端测试环境',
+                'frontend-prod': '前端生产环境',
+                'backend-test': '后端测试环境',
+                'backend-prod': '后端生产环境'
+            };
+
+            // 构建确认信息
+            const taskListStr = selectedTasks.map(t => {
+                const name = taskNames[t.task_id] || t.task_id;
+                const mode = t.run_build ? '[触发构建]' : '[使用最近构建]';
+                return `${name} ${mode}`;
+            }).join('\n• ');
+
+            const confirmMessage = `确定要部署以下${label}任务吗?\n\n任务列表:\n• ${taskListStr}`;
+
+            if (!confirm(confirmMessage)) {
                 return;
             }
 
@@ -390,7 +563,10 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    body: JSON.stringify({
+                        tasks: selectedTasks
+                    })
                 });
 
                 const result = await response.json();
