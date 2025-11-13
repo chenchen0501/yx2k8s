@@ -37,6 +37,9 @@ async def main():
 
         browser = await p.chromium.launch(
             headless=config.HEADLESS,
+            # 后台运行
+            # args=['--headless=new'],
+            
             # 设置浏览器参数
             args=[
                 '--no-sandbox',

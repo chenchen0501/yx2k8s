@@ -28,6 +28,9 @@ env/
 # 登录状态文件 (包含敏感信息)
 auth.json
 
+# 环境变量配置 (包含敏感URL)
+.env
+
 # 截图
 screenshots/*.png
 
