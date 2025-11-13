@@ -25,24 +25,37 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'yunxiao-k8s-deployer-secret'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# 任务状态管理
-task_lock = Lock()
-task_status = {
+# 任务状态管理 - 前后端独立
+frontend_lock = Lock()
+backend_lock = Lock()
+
+frontend_status = {
     'running': False,
     'current_step': '',
     'logs': [],
     'result': None,
     'start_time': None,
     'end_time': None,
-    'tasks': []  # 当前执行的任务列表
+    'tasks': []
+}
+
+backend_status = {
+    'running': False,
+    'current_step': '',
+    'logs': [],
+    'result': None,
+    'start_time': None,
+    'end_time': None,
+    'tasks': []
 }
 
 
 class WebLogger:
     """Web 日志输出类,用于捕获日志并通过 WebSocket 发送"""
 
-    def __init__(self):
+    def __init__(self, project=None):
         self.logs = []
+        self.project = project  # 'frontend' 或 'backend'
 
     def log(self, message, level="INFO"):
         """记录日志并发送到前端"""
@@ -50,7 +63,8 @@ class WebLogger:
         log_entry = {
             'timestamp': timestamp,
             'level': level,
-            'message': message
+            'message': message,
+            'project': self.project  # 添加项目标识
         }
         self.logs.append(log_entry)
 
@@ -58,24 +72,31 @@ class WebLogger:
         socketio.emit('log', log_entry)
 
         # 同时输出到控制台
-        print(f"[{timestamp}] [{level}] {message}")
+        print(f"[{timestamp}] [{level}] [{self.project or 'GLOBAL'}] {message}")
 
 
 # 全局 logger 实例
 web_logger = WebLogger()
 
 
-async def run_deployment(selected_tasks):
+async def run_deployment(selected_tasks, project='frontend'):
     """
     异步执行部署任务
 
     Args:
         selected_tasks: 选中的任务列表,每个任务是字典 {'task_id': 'frontend-test', 'run_build': True}
+        project: 项目类型 ('frontend' 或 'backend')
     """
-    global task_status
+    # 选择对应的锁和状态
+    if project == 'frontend':
+        status_lock = frontend_lock
+        task_status = frontend_status
+    else:
+        status_lock = backend_lock
+        task_status = backend_status
 
     try:
-        with task_lock:
+        with status_lock:
             task_status['running'] = True
             task_status['logs'] = []
             task_status['result'] = None
@@ -84,12 +105,14 @@ async def run_deployment(selected_tasks):
             task_status['current_step'] = '初始化...'
             task_status['tasks'] = []
 
-        socketio.emit('task_status', {'status': 'running'})
+        socketio.emit('task_status', {'status': 'running', 'project': project})
 
-        web_logger.log(f"开始执行部署任务 (共 {len(selected_tasks)} 个)", "INFO")
+        # 创建带项目标识的 logger
+        project_logger = WebLogger(project=project)
+        project_logger.log(f"开始执行部署任务 (共 {len(selected_tasks)} 个)", "INFO")
 
         # 创建任务调度器
-        scheduler = TaskScheduler(log_callback=web_logger.log)
+        scheduler = TaskScheduler(log_callback=project_logger.log)
 
         # 根据选中的任务创建 DeployTask
         task_map = {
@@ -104,15 +127,15 @@ async def run_deployment(selected_tasks):
             run_build = task_info['run_build']
 
             if task_id in task_map:
-                name, project, env = task_map[task_id]
+                name, proj, env = task_map[task_id]
                 mode = '触发构建' if run_build else '使用最近构建'
-                web_logger.log(f"添加任务: {name} [{mode}]", "INFO")
+                project_logger.log(f"添加任务: {name} [{mode}]", "INFO")
 
-                task = DeployTask(task_id, name, project, env, run_build=run_build)
+                task = DeployTask(task_id, name, proj, env, run_build=run_build)
                 scheduler.add_task(task)
 
                 # 更新任务状态
-                with task_lock:
+                with status_lock:
                     task_status['tasks'].append({
                         'id': task_id,
                         'name': name,
@@ -128,7 +151,7 @@ async def run_deployment(selected_tasks):
         error_count = sum(1 for t in scheduler.tasks if t.status == 'error')
 
         # 更新任务状态
-        with task_lock:
+        with status_lock:
             for task in scheduler.tasks:
                 # 查找对应的任务状态并更新
                 for ts in task_status['tasks']:
@@ -140,38 +163,38 @@ async def run_deployment(selected_tasks):
                         break
 
         if error_count == 0:
-            with task_lock:
+            with status_lock:
                 task_status['result'] = 'success'
                 task_status['current_step'] = '所有任务执行完成'
-            web_logger.log(f"✅ 所有任务执行成功! 成功 {success_count} 个", "SUCCESS")
-            socketio.emit('task_status', {'status': 'success'})
+            project_logger.log(f"✅ 所有任务执行成功! 成功 {success_count} 个", "SUCCESS")
+            socketio.emit('task_status', {'status': 'success', 'project': project})
         else:
-            with task_lock:
+            with status_lock:
                 task_status['result'] = 'partial'
                 task_status['current_step'] = f'部分任务失败: 成功 {success_count} 个, 失败 {error_count} 个'
-            web_logger.log(f"⚠️ 部分任务失败: 成功 {success_count} 个, 失败 {error_count} 个", "WARNING")
-            socketio.emit('task_status', {'status': 'partial'})
+            project_logger.log(f"⚠️ 部分任务失败: 成功 {success_count} 个, 失败 {error_count} 个", "WARNING")
+            socketio.emit('task_status', {'status': 'partial', 'project': project})
 
     except Exception as e:
-        with task_lock:
+        with status_lock:
             task_status['result'] = 'error'
             task_status['current_step'] = f'部署失败: {str(e)}'
 
-        web_logger.log(f"部署任务执行失败: {str(e)}", "ERROR")
-        socketio.emit('task_status', {'status': 'error', 'error': str(e)})
+        project_logger.log(f"部署任务执行失败: {str(e)}", "ERROR")
+        socketio.emit('task_status', {'status': 'error', 'error': str(e), 'project': project})
 
     finally:
-        with task_lock:
+        with status_lock:
             task_status['running'] = False
             task_status['end_time'] = datetime.now().isoformat()
 
 
-def start_deployment_task(selected_tasks):
+def start_deployment_task(selected_tasks, project='frontend'):
     """在新的事件循环中启动部署任务"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(run_deployment(selected_tasks))
+        loop.run_until_complete(run_deployment(selected_tasks, project))
     finally:
         loop.close()
 
@@ -185,23 +208,42 @@ def index():
 @app.route('/api/status')
 def get_status():
     """获取当前任务状态"""
-    with task_lock:
-        return jsonify(task_status)
+    with frontend_lock:
+        frontend_data = frontend_status.copy()
+    with backend_lock:
+        backend_data = backend_status.copy()
+
+    return jsonify({
+        'frontend': frontend_data,
+        'backend': backend_data
+    })
 
 
 @app.route('/api/deploy', methods=['POST'])
 def trigger_deploy():
     """触发部署任务"""
-    with task_lock:
+    # 获取选中的任务和项目类型
+    data = request.get_json()
+    selected_tasks = data.get('tasks', [])
+    project = data.get('project', 'frontend')  # 'frontend' 或 'backend'
+
+    # 根据项目类型选择对应的锁和状态
+    if project == 'frontend':
+        status_lock = frontend_lock
+        task_status = frontend_status
+        project_label = '前端'
+    else:
+        status_lock = backend_lock
+        task_status = backend_status
+        project_label = '后端'
+
+    # 检查对应项目是否正在运行
+    with status_lock:
         if task_status['running']:
             return jsonify({
                 'success': False,
-                'message': '已有任务正在执行中,请稍后再试'
+                'message': f'{project_label}任务正在执行中,请稍后再试'
             }), 400
-
-    # 获取选中的任务
-    data = request.get_json()
-    selected_tasks = data.get('tasks', [])
 
     if not selected_tasks:
         return jsonify({
@@ -213,7 +255,7 @@ def trigger_deploy():
     import threading
     thread = threading.Thread(
         target=start_deployment_task,
-        args=(selected_tasks,)
+        args=(selected_tasks, project)
     )
     thread.daemon = True
     thread.start()
@@ -222,6 +264,7 @@ def trigger_deploy():
     build_count = sum(1 for t in selected_tasks if t.get('run_build', True))
     skip_count = len(selected_tasks) - build_count
 
+    project_label = '前端' if project == 'frontend' else '后端'
     if skip_count == 0:
         mode_desc = '全部触发新构建'
     elif build_count == 0:
@@ -231,7 +274,7 @@ def trigger_deploy():
 
     return jsonify({
         'success': True,
-        'message': f'部署任务已启动 (共 {len(selected_tasks)} 个任务, {mode_desc})'
+        'message': f'{project_label}部署任务已启动 (共 {len(selected_tasks)} 个任务, {mode_desc})'
     })
 
 
@@ -240,11 +283,14 @@ def handle_connect():
     """WebSocket 连接建立"""
     emit('connected', {'data': '连接成功'})
 
-    # 发送当前状态
-    with task_lock:
-        emit('task_status', {
-            'status': 'running' if task_status['running'] else 'idle'
-        })
+    # 发送前端和后端的当前状态
+    with frontend_lock:
+        if frontend_status['running']:
+            emit('task_status', {'status': 'running', 'project': 'frontend'})
+
+    with backend_lock:
+        if backend_status['running']:
+            emit('task_status', {'status': 'running', 'project': 'backend'})
 
 
 @socketio.on('disconnect')

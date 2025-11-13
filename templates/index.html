@@ -384,9 +384,20 @@
                 </button>
             </div>
 
-            <!-- 日志区域 -->
-            <div class="logs-container" id="logsContainer">
-                <div class="empty-logs">暂无日志</div>
+            <!-- 前端日志区域 -->
+            <div class="status-card" style="border-left-color: #667eea;">
+                <h3>📋 前端部署日志</h3>
+                <div class="logs-container" id="frontendLogsContainer">
+                    <div class="empty-logs">暂无日志</div>
+                </div>
+            </div>
+
+            <!-- 后端日志区域 -->
+            <div class="status-card" style="border-left-color: #4caf50;">
+                <h3>📋 后端部署日志</h3>
+                <div class="logs-container" id="backendLogsContainer">
+                    <div class="empty-logs">暂无日志</div>
+                </div>
             </div>
         </div>
 
@@ -398,7 +409,8 @@
     <script>
         // 连接 WebSocket
         const socket = io();
-        let isRunning = false;
+        let isFrontendRunning = false;
+        let isBackendRunning = false;
 
         // 连接成功
         socket.on('connected', (data) => {
@@ -409,6 +421,20 @@
         socket.on('task_status', (data) => {
             console.log('任务状态:', data);
             updateStatus(data);
+
+            // 如果任务完成,重置对应按钮状态
+            if (data.status === 'success' || data.status === 'error' || data.status === 'partial') {
+                const project = data.project;
+                if (project === 'frontend') {
+                    isFrontendRunning = false;
+                    document.getElementById('deployFrontendBtn').disabled = false;
+                    document.getElementById('deployFrontendBtn').textContent = '▶ 开始前端部署';
+                } else if (project === 'backend') {
+                    isBackendRunning = false;
+                    document.getElementById('deployBackendBtn').disabled = false;
+                    document.getElementById('deployBackendBtn').textContent = '▶ 开始后端部署';
+                }
+            }
         });
 
         // 接收日志
@@ -420,42 +446,37 @@
         function updateStatus(data) {
             const statusText = document.getElementById('statusText');
             const statusBadge = document.getElementById('statusBadge');
-            const deployBtn = document.getElementById('deployBtn');
 
-            if (data.status === 'running') {
-                isRunning = true;
+            // 检查是否有前端或后端任务在运行
+            const hasRunning = isFrontendRunning || isBackendRunning;
+
+            if (hasRunning) {
                 statusText.innerHTML = '<span class="loading-spinner"></span>部署任务执行中...';
                 statusBadge.textContent = '执行中';
                 statusBadge.className = 'status-badge status-running';
-                deployBtn.disabled = true;
-                deployBtn.textContent = '⏸ 执行中...';
-            } else if (data.status === 'success') {
-                isRunning = false;
-                statusText.textContent = '部署任务执行成功!';
-                statusBadge.textContent = '成功';
-                statusBadge.className = 'status-badge status-success';
-                deployBtn.disabled = false;
-                deployBtn.textContent = '▶ 开始部署';
-            } else if (data.status === 'error') {
-                isRunning = false;
-                statusText.textContent = '部署任务执行失败: ' + (data.error || '未知错误');
-                statusBadge.textContent = '失败';
-                statusBadge.className = 'status-badge status-error';
-                deployBtn.disabled = false;
-                deployBtn.textContent = '▶ 重试部署';
             } else {
-                isRunning = false;
                 statusText.textContent = '系统就绪';
                 statusBadge.textContent = '空闲';
                 statusBadge.className = 'status-badge status-idle';
-                deployBtn.disabled = false;
-                deployBtn.textContent = '▶ 开始部署';
             }
         }
 
-        // 添加日志
+        // 添加日志到指定容器
         function appendLog(log) {
-            const logsContainer = document.getElementById('logsContainer');
+            // 根据任务类型判断添加到哪个日志容器
+            let containerId = 'frontendLogsContainer';  // 默认前端
+
+            // 通过日志消息判断是前端还是后端
+            if (log.message.includes('后端') || log.message.includes('backend')) {
+                containerId = 'backendLogsContainer';
+            } else if (log.message.includes('前端') || log.message.includes('frontend')) {
+                containerId = 'frontendLogsContainer';
+            } else if (log.project) {
+                // 如果有 project 字段
+                containerId = log.project === 'backend' ? 'backendLogsContainer' : 'frontendLogsContainer';
+            }
+
+            const logsContainer = document.getElementById(containerId);
 
             // 移除空日志提示
             const emptyLogs = logsContainer.querySelector('.empty-logs');
@@ -513,18 +534,23 @@
 
         // 开始前端部署
         async function startDeployFrontend() {
-            await executeDeploy(getFrontendTasks(), '前端');
+            await executeDeploy(getFrontendTasks(), '前端', 'frontend');
         }
 
         // 开始后端部署
         async function startDeployBackend() {
-            await executeDeploy(getBackendTasks(), '后端');
+            await executeDeploy(getBackendTasks(), '后端', 'backend');
         }
 
         // 执行部署
-        async function executeDeploy(selectedTasks, label) {
-            if (isRunning) {
-                alert('已有任务正在执行中,请稍后再试');
+        async function executeDeploy(selectedTasks, label, project) {
+            // 检查对应项目是否正在运行
+            if (project === 'frontend' && isFrontendRunning) {
+                alert('前端部署任务正在执行中,请稍后再试');
+                return;
+            }
+            if (project === 'backend' && isBackendRunning) {
+                alert('后端部署任务正在执行中,请稍后再试');
                 return;
             }
 
@@ -554,9 +580,23 @@
                 return;
             }
 
-            // 清空日志
-            const logsContainer = document.getElementById('logsContainer');
+            // 清空对应的日志
+            const containerId = project === 'frontend' ? 'frontendLogsContainer' : 'backendLogsContainer';
+            const logsContainer = document.getElementById(containerId);
             logsContainer.innerHTML = '';
+
+            // 设置运行状态
+            if (project === 'frontend') {
+                isFrontendRunning = true;
+                document.getElementById('deployFrontendBtn').disabled = true;
+                document.getElementById('deployFrontendBtn').textContent = '⏸ 执行中...';
+            } else {
+                isBackendRunning = true;
+                document.getElementById('deployBackendBtn').disabled = true;
+                document.getElementById('deployBackendBtn').textContent = '⏸ 执行中...';
+            }
+
+            updateStatus({});
 
             try {
                 const response = await fetch('/api/deploy', {
@@ -565,7 +605,8 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        tasks: selectedTasks
+                        tasks: selectedTasks,
+                        project: project  // 传递项目类型
                     })
                 });
 
@@ -573,10 +614,32 @@
 
                 if (!result.success) {
                     alert(result.message);
+                    // 重置状态
+                    if (project === 'frontend') {
+                        isFrontendRunning = false;
+                        document.getElementById('deployFrontendBtn').disabled = false;
+                        document.getElementById('deployFrontendBtn').textContent = '▶ 开始前端部署';
+                    } else {
+                        isBackendRunning = false;
+                        document.getElementById('deployBackendBtn').disabled = false;
+                        document.getElementById('deployBackendBtn').textContent = '▶ 开始后端部署';
+                    }
+                    updateStatus({});
                 }
             } catch (error) {
                 console.error('启动部署失败:', error);
                 alert('启动部署失败: ' + error.message);
+                // 重置状态
+                if (project === 'frontend') {
+                    isFrontendRunning = false;
+                    document.getElementById('deployFrontendBtn').disabled = false;
+                    document.getElementById('deployFrontendBtn').textContent = '▶ 开始前端部署';
+                } else {
+                    isBackendRunning = false;
+                    document.getElementById('deployBackendBtn').disabled = false;
+                    document.getElementById('deployBackendBtn').textContent = '▶ 开始后端部署';
+                }
+                updateStatus({});
             }
         }
 
