@@ -60,6 +60,7 @@ class TaskScheduler:
         self.browser = None
         self.context = None
         self.page = None
+        self.tag_cache: Dict[str, str] = {}
 
     def add_task(self, task: DeployTask):
         """添加任务"""
@@ -155,25 +156,45 @@ class TaskScheduler:
             original_yunxiao_url = config.YUNXIAO_URL
             original_k8s_url = config.K8S_URL
             original_tag_pattern = config.TAG_PATTERN
+            original_k8s_username = getattr(config, "K8S_USERNAME", "")
+            original_k8s_password = getattr(config, "K8S_PASSWORD", "")
 
             config.YUNXIAO_URL = yunxiao_url
             config.K8S_URL = k8s_url
             config.TAG_PATTERN = tag_pattern
+            config.K8S_USERNAME = task_config.get('k8s_username', '')
+            config.K8S_PASSWORD = task_config.get('k8s_password', '')
 
             try:
                 # Step 1: 云效获取版本号 (始终执行,但可能跳过触发新构建)
+                cache_key = task.project
+                cached_tag = self.tag_cache.get(cache_key)
+                tag = None
+
                 if task.run_build:
-                    self._log(f"步骤 1/2: 触发云效构建并获取镜像版本号", "INFO")
-                    self._log(f"云效地址: {yunxiao_url}", "INFO")
-                    tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=False)
-                    task.tag = tag
-                    self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
+                    if cached_tag:
+                        self._log(f"步骤 1/2: 复用本次会话已构建的 {task.project} 版本号", "INFO")
+                        self._log(f"版本号: {cached_tag}", "INFO")
+                        tag = cached_tag
+                    else:
+                        self._log(f"步骤 1/2: 触发云效构建并获取镜像版本号", "INFO")
+                        self._log(f"云效地址: {yunxiao_url}", "INFO")
+                        tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=False)
+                        self.tag_cache[cache_key] = tag
+                        self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
                 else:
-                    self._log(f"步骤 1/2: 从最近一次云效构建中获取镜像版本号 (跳过触发)", "INFO")
-                    self._log(f"云效地址: {yunxiao_url}", "INFO")
-                    tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=True)
-                    task.tag = tag
-                    self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
+                    if cached_tag:
+                        self._log(f"步骤 1/2: 复用本次会话缓存的 {task.project} 版本号", "INFO")
+                        self._log(f"版本号: {cached_tag}", "INFO")
+                        tag = cached_tag
+                    else:
+                        self._log(f"步骤 1/2: 从最近一次云效构建中获取镜像版本号 (跳过触发)", "INFO")
+                        self._log(f"云效地址: {yunxiao_url}", "INFO")
+                        tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=True)
+                        self.tag_cache[cache_key] = tag
+                        self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
+
+                task.tag = tag
 
                 # Step 2: K8s 更新镜像版本
                 self._log(f"\n步骤 2/2: 更新 K8s Deployment 镜像版本", "INFO")
@@ -188,6 +209,8 @@ class TaskScheduler:
                 config.YUNXIAO_URL = original_yunxiao_url
                 config.K8S_URL = original_k8s_url
                 config.TAG_PATTERN = original_tag_pattern
+                config.K8S_USERNAME = original_k8s_username
+                config.K8S_PASSWORD = original_k8s_password
 
         except Exception as e:
             task.status = 'error'

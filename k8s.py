@@ -24,11 +24,9 @@ async def update_deployment_image(page: Page, new_tag: str) -> None:
         await page.wait_for_load_state('networkidle')
 
         # 检查是否需要登录
-        login_elements = await page.locator('text=7天内保持登录').count()
-        if login_elements > 0:
-            log("⚠️  检测到需要登录 K8s,请在浏览器中手动登录后按回车继续...", "WARNING")
-            input("按回车继续...")
-            await page.wait_for_load_state('networkidle')
+        await page.wait_for_timeout(500)
+        if not await _ensure_k8s_logged_in(page):
+            raise Exception("自动登录 K8s 失败,请检查账号密码或页面是否有额外校验")
 
         # 2. 点击【调整镜像版本】按钮
         log("点击【调整镜像版本】按钮...", "PROGRESS")
@@ -313,3 +311,88 @@ async def update_deployment_image(page: Page, new_tag: str) -> None:
         log(f"K8s 操作失败: {str(e)}", "ERROR")
         await take_screenshot(page, "k8s_error")
         raise
+
+
+async def _ensure_k8s_logged_in(page: Page, allow_retry: bool = True) -> bool:
+    """
+    确保已登录 K8s 控制台,必要时执行自动登录
+
+    Args:
+        page: 当前页面
+        allow_retry: 自动登录失败时是否允许返回 False (用于手动登录后的再次校验)
+    """
+    if await _is_k8s_console_loaded(page):
+        return True
+
+    login_form = page.locator('form.el-form').first
+    try:
+        if await login_form.count() == 0:
+            return True
+        if not await login_form.is_visible():
+            return await _is_k8s_console_loaded(page)
+    except PlaywrightTimeoutError:
+        return await _is_k8s_console_loaded(page)
+    except Exception:
+        return await _is_k8s_console_loaded(page)
+
+    if not config.K8S_USERNAME or not config.K8S_PASSWORD:
+        log("检测到登录表单,但未配置 K8s 账号密码,无法自动登录", "WARNING")
+        return False if allow_retry else False
+
+    log("检测到登录表单,尝试自动填充账号密码...", "INFO")
+
+    try:
+        username_input = login_form.locator('input[placeholder="请输入用户名"]').first
+        password_input = login_form.locator('input[placeholder="请输入密码"]').first
+        login_button = login_form.locator('button.el-button--primary').first
+
+        await username_input.wait_for(state='visible', timeout=5000)
+        await password_input.wait_for(state='visible', timeout=5000)
+        await login_button.wait_for(state='visible', timeout=5000)
+
+        await username_input.fill(config.K8S_USERNAME)
+        await password_input.fill(config.K8S_PASSWORD)
+
+        await login_button.click()
+        await page.wait_for_load_state('networkidle')
+
+        try:
+            await login_form.wait_for(state='hidden', timeout=5000)
+        except PlaywrightTimeoutError:
+            pass  # 有些环境登录后表单仍留在 DOM 中,改为后续判定
+
+        if await _is_k8s_console_loaded(page):
+            log("自动登录成功", "SUCCESS")
+            return True
+
+        await login_form.wait_for(state='hidden', timeout=config.PAGE_LOAD_TIMEOUT)
+        if await _is_k8s_console_loaded(page):
+            log("自动登录成功", "SUCCESS")
+            return True
+    except PlaywrightTimeoutError:
+        log("自动登录后仍检测到登录表单,可能是凭证错误或需要额外验证", "ERROR")
+    except Exception as exc:
+        log(f"自动登录失败: {str(exc)}", "ERROR")
+
+    if allow_retry:
+        await take_screenshot(page, "k8s_auto_login_failed")
+    return False
+
+
+async def _is_k8s_console_loaded(page: Page) -> bool:
+    """判断是否已进入 K8s 控制台页面"""
+    selectors = [
+        'text=Deployment',
+        'button:has-text("调整镜像版本")',
+        'text=应用操作',
+        '.el-menu:has-text("工作负载")',
+        'div:has-text("kuboard")',
+    ]
+    for sel in selectors:
+        locator = page.locator(sel).first
+        try:
+            if await locator.count() > 0 and await locator.is_visible():
+                return True
+        except Exception:
+            continue
+    return False

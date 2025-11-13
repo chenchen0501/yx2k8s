@@ -10,6 +10,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# ==================== K8s 登录凭证 ====================
+K8S_ENV_CREDENTIALS = {
+    'test': {
+        'username': os.getenv('K8S_DEV_USERNAME', ''),
+        'password': os.getenv('K8S_DEV_PASSWORD', ''),
+    },
+    'prod': {
+        'username': os.getenv('K8S_PROD_USERNAME', ''),
+        'password': os.getenv('K8S_PROD_PASSWORD', ''),
+    },
+}
+
+
 # ==================== 前端配置 ====================
 FRONTEND_CONFIG = {
     # 测试环境
@@ -17,12 +30,16 @@ FRONTEND_CONFIG = {
         'yunxiao_url': os.getenv('FRONTEND_TEST_YUNXIAO_URL', ''),
         'k8s_url': os.getenv('FRONTEND_TEST_K8S_URL', ''),
         'tag_pattern': os.getenv('FRONTEND_TEST_TAG_PATTERN', r'javaly/jpms-web:(dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})'),
+        'k8s_username': K8S_ENV_CREDENTIALS['test']['username'],
+        'k8s_password': K8S_ENV_CREDENTIALS['test']['password'],
     },
     # 生产环境
     'prod': {
         'yunxiao_url': os.getenv('FRONTEND_PROD_YUNXIAO_URL', ''),
         'k8s_url': os.getenv('FRONTEND_PROD_K8S_URL', ''),
         'tag_pattern': os.getenv('FRONTEND_PROD_TAG_PATTERN', r'javaly/jpms-web:(prod-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})'),
+        'k8s_username': K8S_ENV_CREDENTIALS['prod']['username'],
+        'k8s_password': K8S_ENV_CREDENTIALS['prod']['password'],
     }
 }
 
@@ -34,12 +51,16 @@ BACKEND_CONFIG = {
         'yunxiao_url': os.getenv('BACKEND_TEST_YUNXIAO_URL', ''),
         'k8s_url': os.getenv('BACKEND_TEST_K8S_URL', ''),
         'tag_pattern': os.getenv('BACKEND_TEST_TAG_PATTERN', ''),
+        'k8s_username': K8S_ENV_CREDENTIALS['test']['username'],
+        'k8s_password': K8S_ENV_CREDENTIALS['test']['password'],
     },
     # 生产环境
     'prod': {
         'yunxiao_url': os.getenv('BACKEND_PROD_YUNXIAO_URL', ''),
         'k8s_url': os.getenv('BACKEND_PROD_K8S_URL', ''),
         'tag_pattern': os.getenv('BACKEND_PROD_TAG_PATTERN', ''),
+        'k8s_username': K8S_ENV_CREDENTIALS['prod']['username'],
+        'k8s_password': K8S_ENV_CREDENTIALS['prod']['password'],
     }
 }
 
@@ -76,3 +97,7 @@ SCREENSHOT_DIR = "screenshots"
 
 # 日志保存目录
 LOG_DIR = "logs"
+
+# 默认凭证(与旧逻辑兼容,运行时由 TaskScheduler 设置)
+K8S_USERNAME = FRONTEND_CONFIG['test']['k8s_username']
+K8S_PASSWORD = FRONTEND_CONFIG['test']['k8s_password']

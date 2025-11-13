@@ -7,7 +7,7 @@
 ### 支持的环境
 
 1. **前端测试环境** (Frontend Test)
-2. **前端生产环境** (Frontend Prod) 
+2. **前端生产环境** (Frontend Prod)
 3. **后端测试环境** (Backend Test)
 4. **后端生产环境** (Backend Prod)
 
@@ -26,6 +26,7 @@
 #### 2. 任务选择区域
 
 - **前端 (Frontend)**
+
   - [ ] 测试环境 (Test)
   - [ ] 生产环境 (Prod)
 
@@ -45,6 +46,7 @@
 #### 4. 开始部署按钮
 
 点击后会:
+
 1. 检查是否需要云效构建
    - 如果取消了【云效运行】,会弹出输入框要求输入版本号
 2. 显示确认弹窗,列出部署模式和任务列表
@@ -78,6 +80,12 @@ BACKEND_TEST_TAG_PATTERN=javaly/jpms-server:(dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\
 BACKEND_PROD_YUNXIAO_URL=https://flow.aliyun.com/pipelines/YOUR_BACKEND_PROD_PIPELINE/current
 BACKEND_PROD_K8S_URL=https://k8s.prod.example.com/.../Deployment/jpms-server
 BACKEND_PROD_TAG_PATTERN=javaly/jpms-server:(prod-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})
+
+# ==================== K8s 登录凭证（按环境） ====================
+K8S_DEV_USERNAME=your-dev-username
+K8S_DEV_PASSWORD=your-dev-password
+K8S_PROD_USERNAME=your-prod-username
+K8S_PROD_PASSWORD=your-prod-password
 ```
 
 ## 使用流程
@@ -113,6 +121,7 @@ python web_server.py
 #### 选择要部署的环境
 
 根据需要勾选:
+
 - 只部署前端测试? → 只勾选 "前端 > 测试环境"
 - 只部署生产? → 点击 "取消全选" 然后勾选两个生产环境
 - 全部部署? → 保持默认全选
@@ -127,11 +136,13 @@ python web_server.py
 ### 5. 查看执行结果
 
 每个任务完成后会显示:
+
 - ✅ 成功标志
 - 获取到的镜像版本号
 - 总耗时
 
 如果失败:
+
 - ❌ 失败标志
 - 错误信息
 - 错误截图保存在 `screenshots/` 目录
@@ -199,10 +210,12 @@ python web_server.py
 ### 核心模块
 
 1. **task_scheduler.py**: 任务调度器
+
    - `DeployTask`: 单个部署任务
    - `TaskScheduler`: 管理多个任务的执行
 
 2. **web_server.py**: Web 服务
+
    - Flask HTTP 接口
    - WebSocket 实时日志推送
    - 任务状态管理
@@ -239,6 +252,7 @@ python web_server.py
 **错误信息**: `Address already in use`
 
 **解决方法**:
+
 ```bash
 # 杀掉占用端口的进程
 lsof -ti:5001 | xargs kill -9
@@ -258,6 +272,7 @@ PORT = 5002  # 改为其他端口
 **错误信息**: `无法获取镜像版本号`
 
 **解决方法**:
+
 1. 检查 `TAG_PATTERN` 正则表达式是否匹配实际的镜像版本格式
 2. 设置 `HEADLESS = False` 打开浏览器查看构建日志
 3. 查看 `screenshots/` 目录的错误截图
@@ -265,6 +280,7 @@ PORT = 5002  # 改为其他端口
 ### 问题 4: 登录状态失效
 
 **解决方法**:
+
 ```bash
 # 删除登录状态文件
 rm auth.json
@@ -276,6 +292,7 @@ python web_server.py
 ## 更多帮助
 
 如有问题,请查看:
+
 - 项目根目录的 `README.md`
 - `screenshots/` 目录的错误截图
 - 控制台的详细日志输出
