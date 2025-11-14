@@ -116,8 +116,10 @@ async def run_deployment(selected_tasks, project='frontend'):
 
         # 根据选中的任务创建 DeployTask
         task_map = {
+            'frontend-build': ('云效运行', 'frontend', 'build'),
             'frontend-test': ('前端测试环境', 'frontend', 'test'),
             'frontend-prod': ('前端生产环境', 'frontend', 'prod'),
+            'backend-build': ('云效运行', 'backend', 'build'),
             'backend-test': ('后端测试环境', 'backend', 'test'),
             'backend-prod': ('后端生产环境', 'backend', 'prod'),
         }
@@ -126,10 +128,12 @@ async def run_deployment(selected_tasks, project='frontend'):
             task_id = task_info['task_id']
             run_build = task_info['run_build']
 
+            project_logger.log(f"处理任务: task_id={task_id}, run_build={run_build}", "INFO")
+
             if task_id in task_map:
                 name, proj, env = task_map[task_id]
                 mode = '触发构建' if run_build else '使用最近构建'
-                project_logger.log(f"添加任务: {name} [{mode}]", "INFO")
+                project_logger.log(f"添加任务: {name} [{mode}] (project={proj}, env={env})", "INFO")
 
                 task = DeployTask(task_id, name, proj, env, run_build=run_build)
                 scheduler.add_task(task)
@@ -142,6 +146,9 @@ async def run_deployment(selected_tasks, project='frontend'):
                         'run_build': run_build,
                         'status': 'pending'
                     })
+            else:
+                project_logger.log(f"⚠️ 未知的任务ID: {task_id}，已跳过", "WARNING")
+                project_logger.log(f"可用的任务ID: {list(task_map.keys())}", "INFO")
 
         # 执行所有任务
         await scheduler.execute_all()
@@ -195,6 +202,32 @@ def start_deployment_task(selected_tasks, project='frontend'):
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run_deployment(selected_tasks, project))
+    except Exception as e:
+        # 创建带项目标识的 logger 来记录错误
+        project_logger = WebLogger(project=project)
+        project_logger.log(f"部署任务执行异常: {str(e)}", "ERROR")
+        import traceback
+        project_logger.log(f"异常堆栈: {traceback.format_exc()}", "ERROR")
+        
+        # 更新任务状态
+        if project == 'frontend':
+            status_lock = frontend_lock
+            task_status = frontend_status
+        else:
+            status_lock = backend_lock
+            task_status = backend_status
+        
+        with status_lock:
+            task_status['running'] = False
+            task_status['result'] = 'error'
+            task_status['end_time'] = datetime.now().isoformat()
+        
+        # 发送错误状态
+        socketio.emit('task_status', {
+            'status': 'error',
+            'project': project,
+            'summary': f'任务执行异常: {str(e)}'
+        })
     finally:
         loop.close()
 

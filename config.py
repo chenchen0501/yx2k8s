@@ -33,6 +33,14 @@ K8S_ENV_CREDENTIALS = {
 
 # ==================== 前端配置 ====================
 FRONTEND_CONFIG = {
+    # 云效运行（仅构建，不部署）
+    'build': {
+        'yunxiao_url': os.getenv('FRONTEND_TEST_YUNXIAO_URL', ''),
+        'k8s_url': '',  # 不更新 K8s
+        'tag_pattern': os.getenv('FRONTEND_TEST_TAG_PATTERN', r'javaly/jpms-web:(dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})'),
+        'k8s_username': '',
+        'k8s_password': '',
+    },
     # 测试环境
     'test': {
         'yunxiao_url': os.getenv('FRONTEND_TEST_YUNXIAO_URL', ''),
@@ -54,6 +62,19 @@ FRONTEND_CONFIG = {
 
 # ==================== 后端配置(预留) ====================
 BACKEND_CONFIG = {
+    # 云效运行（仅构建，不部署）
+    'build': {
+        'yunxiao_url': os.getenv('BACKEND_TEST_YUNXIAO_URL', ''),
+        'k8s_url': '',  # 不更新 K8s
+        'tag_pattern': os.getenv(
+            'BACKEND_TEST_TAG_PATTERN',
+            r'javaly/spms-server:(dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})',
+        ),
+        'log_button_index': int(os.getenv('BACKEND_TEST_LOG_INDEX', '0')),
+        'log_job_keyword': os.getenv('BACKEND_TEST_LOG_JOB', 'Java 构建Docker镜像并推送镜像仓库'),
+        'k8s_username': '',
+        'k8s_password': '',
+    },
     # 测试环境
     'test': {
         'yunxiao_url': os.getenv('BACKEND_TEST_YUNXIAO_URL', ''),

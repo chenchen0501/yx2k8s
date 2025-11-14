@@ -80,10 +80,12 @@ class TaskScheduler:
         self._log(f"共有 {len(self.tasks)} 个任务待执行", "INFO")
         self._log("-" * 60, "INFO")
 
-        # 初始化浏览器
-        await self._init_browser()
-
         try:
+            # 初始化浏览器
+            self._log("正在初始化浏览器...", "INFO")
+            await self._init_browser()
+            self._log("浏览器初始化完成", "INFO")
+
             # 按顺序执行每个任务
             for i, task in enumerate(self.tasks, 1):
                 self._log(f"\n【任务 {i}/{len(self.tasks)}】{task.name}", "INFO")
@@ -104,6 +106,11 @@ class TaskScheduler:
             # 输出总结
             self._print_summary()
 
+        except Exception as e:
+            self._log(f"执行任务时发生异常: {str(e)}", "ERROR")
+            import traceback
+            self._log(f"异常堆栈: {traceback.format_exc()}", "ERROR")
+            raise
         finally:
             await self._cleanup()
 
@@ -139,15 +146,23 @@ class TaskScheduler:
         task.start_time = datetime.now()
 
         try:
+            self._log(f"开始执行任务: {task.name} (task_id={task.task_id}, project={task.project}, env={task.env}, run_build={task.run_build})", "INFO")
+            
             # 获取任务配置
+            self._log(f"获取任务配置 (project={task.project}, env={task.env})...", "INFO")
             task_config = task.get_config()
+            self._log(f"配置获取成功: {list(task_config.keys())}", "INFO")
+            
             yunxiao_url = task_config['yunxiao_url']
             k8s_url = task_config['k8s_url']
             tag_pattern = task_config['tag_pattern']
 
+            self._log(f"配置信息: yunxiao_url={'已配置' if yunxiao_url else '未配置'}, k8s_url={'已配置' if k8s_url else '未配置'}", "INFO")
+
             # 验证配置
-            if not k8s_url:
-                raise Exception(f"K8s URL 配置不完整: k8s_url={k8s_url}")
+            # 如果 k8s_url 为空，表示只构建不部署（如 build 环境）
+            is_build_only = not k8s_url
+            self._log(f"任务模式: {'仅构建' if is_build_only else '构建+部署'}", "INFO")
 
             if task.run_build and not yunxiao_url:
                 raise Exception(f"云效 URL 配置不完整: yunxiao_url={yunxiao_url}")
@@ -180,13 +195,16 @@ class TaskScheduler:
                 else:
                     log_job_keyword = None
 
+                # 根据是否仅构建决定步骤显示
+                step_prefix = "步骤 1/1" if is_build_only else "步骤 1/2"
+
                 if task.run_build:
                     if cached_tag:
-                        self._log(f"步骤 1/2: 复用本次会话已构建的 {task.project} 版本号", "INFO")
+                        self._log(f"{step_prefix}: 复用本次会话已构建的 {task.project} 版本号", "INFO")
                         self._log(f"版本号: {cached_tag}", "INFO")
                         tag = cached_tag
                     else:
-                        self._log(f"步骤 1/2: 触发云效构建并获取镜像版本号", "INFO")
+                        self._log(f"{step_prefix}: 触发云效构建并获取镜像版本号", "INFO")
                         self._log(f"云效地址: {yunxiao_url}", "INFO")
                         if task.project == 'backend':
                             tag = await trigger_backend_build_and_fetch_tag(
@@ -198,11 +216,11 @@ class TaskScheduler:
                         self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
                 else:
                     if cached_tag:
-                        self._log(f"步骤 1/2: 复用本次会话缓存的 {task.project} 版本号", "INFO")
+                        self._log(f"{step_prefix}: 复用本次会话缓存的 {task.project} 版本号", "INFO")
                         self._log(f"版本号: {cached_tag}", "INFO")
                         tag = cached_tag
                     else:
-                        self._log(f"步骤 1/2: 从最近一次云效构建中获取镜像版本号 (跳过触发)", "INFO")
+                        self._log(f"{step_prefix}: 从最近一次云效构建中获取镜像版本号 (跳过触发)", "INFO")
                         self._log(f"云效地址: {yunxiao_url}", "INFO")
                         if task.project == 'backend':
                             tag = await trigger_backend_build_and_fetch_tag(
@@ -215,11 +233,15 @@ class TaskScheduler:
 
                 task.tag = tag
 
-                # Step 2: K8s 更新镜像版本
-                self._log(f"\n步骤 2/2: 更新 K8s Deployment 镜像版本", "INFO")
-                self._log(f"K8s 地址: {k8s_url}", "INFO")
-                await update_deployment_image(self.page, tag)
-                self._log(f"✅ 镜像版本更新成功!", "SUCCESS")
+                # Step 2: K8s 更新镜像版本（如果配置了 K8s URL）
+                if is_build_only:
+                    # 仅构建任务，不需要显示步骤 2
+                    self._log(f"✅ 云效构建完成，版本号: {tag}", "SUCCESS")
+                else:
+                    self._log(f"\n步骤 2/2: 更新 K8s Deployment 镜像版本", "INFO")
+                    self._log(f"K8s 地址: {k8s_url}", "INFO")
+                    await update_deployment_image(self.page, tag)
+                    self._log(f"✅ 镜像版本更新成功!", "SUCCESS")
 
                 task.status = 'success'
 

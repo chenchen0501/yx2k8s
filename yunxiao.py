@@ -79,23 +79,49 @@ async def _trigger_build_and_fetch_tag(
         except:
             pass  # 如果没有弹窗或关闭失败,继续执行
 
-        if not skip_trigger:
-            # 2. 点击【运行】按钮(触发新构建)
+        # 2. 检测云效运行状态并决定是否触发新构建
+        should_trigger = not skip_trigger
+        already_running = False
+
+        if should_trigger:
+            log("检查云效运行状态...", "INFO")
+            try:
+                # 检测"运行中"状态
+                running_indicator = page.locator('text=运行中').first
+                if await running_indicator.count() > 0 and await running_indicator.is_visible():
+                    log("⚠️ 检测到云效已在运行中,跳过触发新构建", "WARNING")
+                    log("将等待当前运行中的构建完成", "INFO")
+                    already_running = True
+                    should_trigger = False
+            except Exception as e:
+                log(f"检测运行状态时出错(继续执行): {str(e)}", "WARNING")
+
+        # 3. 如果需要触发构建，则点击运行按钮
+        if should_trigger:
             log("点击【运行】按钮...", "PROGRESS")
             run_button = page.locator('button:has-text("运行")').first
-            await run_button.click(timeout=config.OPERATION_TIMEOUT)
 
-            # 3. 等待"运行配置"弹窗出现
-            await page.wait_for_selector('text=运行配置', state='visible', timeout=config.OPERATION_TIMEOUT)
+            # 检查按钮是否可用
+            is_disabled = await run_button.is_disabled()
+            if is_disabled:
+                log("⚠️ 运行按钮被禁用,可能已有构建在运行中", "WARNING")
+                log("将等待当前运行中的构建完成", "INFO")
+                already_running = True
+            else:
+                await run_button.click(timeout=config.OPERATION_TIMEOUT)
 
-            # 4. 在弹窗中点击【运行】按钮(确认)
-            log("确认运行配置...", "PROGRESS")
-            confirm_button = page.locator('.next-dialog >> button:has-text("运行")')
-            await confirm_button.click(timeout=config.OPERATION_TIMEOUT)
+                # 4. 等待"运行配置"弹窗出现
+                await page.wait_for_selector('text=运行配置', state='visible', timeout=config.OPERATION_TIMEOUT)
 
-            # 5. 等待弹窗关闭
-            await page.wait_for_selector('text=运行配置', state='hidden', timeout=config.OPERATION_TIMEOUT)
-        else:
+                # 5. 在弹窗中点击【运行】按钮(确认)
+                log("确认运行配置...", "PROGRESS")
+                confirm_button = page.locator('.next-dialog >> button:has-text("运行")')
+                await confirm_button.click(timeout=config.OPERATION_TIMEOUT)
+
+                # 6. 等待弹窗关闭
+                await page.wait_for_selector('text=运行配置', state='hidden', timeout=config.OPERATION_TIMEOUT)
+                log("✓ 已触发新的构建", "SUCCESS")
+        elif skip_trigger and not already_running:
             log("⏭️  跳过触发构建,将从最近一次构建中获取版本号", "INFO")
 
         # 6. 等待构建完成

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>yx2k8s - 云效 K8s 自动部署</title>
+    <title>yx2k8s - 云效 K8s 自动部署（Javaly版）</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * {
@@ -329,12 +329,150 @@
             background: #667eea;
             color: white;
         }
+
+        /* 通知框样式 */
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            pointer-events: none;
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1600px;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+
+        .notification-left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+        .notification-right {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        .notification {
+            pointer-events: auto;
+            min-width: 320px;
+            max-width: 450px;
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.3s ease-out;
+            position: relative;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+        }
+
+        .notification.hiding {
+            animation: slideOut 0.3s ease-out forwards;
+        }
+
+        /* 前端成功 - 紫色主题 */
+        .notification-frontend-success {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        /* 后端成功 - 绿色主题 */
+        .notification-backend-success {
+            background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+            color: white;
+        }
+
+        /* 失败 - 红色主题 */
+        .notification-error {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+        }
+
+        .notification-icon {
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+
+        .notification-message {
+            font-size: 13px;
+            opacity: 0.95;
+            line-height: 1.4;
+        }
+
+        .notification-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            flex-shrink: 0;
+            font-size: 16px;
+            line-height: 1;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notification-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
 <body>
+    <!-- 通知容器 -->
+    <div class="notification-container">
+        <div class="notification-left" id="notificationLeft"></div>
+        <div class="notification-right" id="notificationRight"></div>
+    </div>
+
     <div class="container">
         <div class="header">
-            <h1>🚀 云效 K8s 自动部署</h1>
+            <h1>🚀 云效 K8s 自动部署（Javaly版）</h1>
             <p>点击按钮触发云效构建并自动更新 K8s 镜像版本</p>
         </div>
 
@@ -439,17 +577,37 @@
             console.log('任务状态:', data);
             updateStatus(data);
 
-            // 如果任务完成,重置对应按钮状态
+            // 如果任务完成,重置对应按钮状态并显示通知
             if (data.status === 'success' || data.status === 'error' || data.status === 'partial') {
                 const project = data.project;
+
                 if (project === 'frontend') {
                     isFrontendRunning = false;
                     document.getElementById('deployFrontendBtn').disabled = false;
                     document.getElementById('deployFrontendBtn').textContent = '▶ 开始前端部署';
+
+                    // 显示通知
+                    if (data.status === 'success') {
+                        showNotification('frontend', 'success', '前端部署成功', data.summary || '所有任务已成功完成');
+                    } else if (data.status === 'error') {
+                        showNotification('frontend', 'error', '前端部署失败', data.summary || '任务执行失败');
+                    } else if (data.status === 'partial') {
+                        showNotification('frontend', 'error', '前端部署部分失败', data.summary || '部分任务失败');
+                    }
+
                 } else if (project === 'backend') {
                     isBackendRunning = false;
                     document.getElementById('deployBackendBtn').disabled = false;
                     document.getElementById('deployBackendBtn').textContent = '▶ 开始后端部署';
+
+                    // 显示通知
+                    if (data.status === 'success') {
+                        showNotification('backend', 'success', '后端部署成功', data.summary || '所有任务已成功完成');
+                    } else if (data.status === 'error') {
+                        showNotification('backend', 'error', '后端部署失败', data.summary || '任务执行失败');
+                    } else if (data.status === 'partial') {
+                        showNotification('backend', 'error', '后端部署部分失败', data.summary || '部分任务失败');
+                    }
                 }
             }
         });
@@ -463,6 +621,11 @@
         function updateStatus(data) {
             const statusText = document.getElementById('statusText');
             const statusBadge = document.getElementById('statusBadge');
+
+            // 如果元素不存在，直接返回（这些元素可能已被移除）
+            if (!statusText || !statusBadge) {
+                return;
+            }
 
             // 检查是否有前端或后端任务在运行
             const hasRunning = isFrontendRunning || isBackendRunning;
@@ -531,22 +694,50 @@
         function getFrontendTasks() {
             const checkboxes = document.querySelectorAll('.task-select-frontend:checked');
             const frontendRunBuild = document.getElementById('frontendRunBuild').checked;
+            const tasks = [];
 
-            return Array.from(checkboxes).map(cb => ({
-                task_id: cb.value,
-                run_build: frontendRunBuild
-            }));
+            // 如果选中了"云效运行"，将其作为一个任务添加
+            if (frontendRunBuild) {
+                tasks.push({
+                    task_id: 'frontend-build',
+                    run_build: true
+                });
+            }
+
+            // 添加其他选中的任务
+            Array.from(checkboxes).forEach(cb => {
+                tasks.push({
+                    task_id: cb.value,
+                    run_build: frontendRunBuild
+                });
+            });
+
+            return tasks;
         }
 
         // 获取后端选中的任务
         function getBackendTasks() {
             const checkboxes = document.querySelectorAll('.task-select-backend:checked');
             const backendRunBuild = document.getElementById('backendRunBuild').checked;
+            const tasks = [];
 
-            return Array.from(checkboxes).map(cb => ({
-                task_id: cb.value,
-                run_build: backendRunBuild
-            }));
+            // 如果选中了"云效运行"，将其作为一个任务添加
+            if (backendRunBuild) {
+                tasks.push({
+                    task_id: 'backend-build',
+                    run_build: true
+                });
+            }
+
+            // 添加其他选中的任务
+            Array.from(checkboxes).forEach(cb => {
+                tasks.push({
+                    task_id: cb.value,
+                    run_build: backendRunBuild
+                });
+            });
+
+            return tasks;
         }
 
         // 开始前端部署
@@ -578,8 +769,10 @@
 
             // 显示任务列表
             const taskNames = {
+                'frontend-build': '云效运行',
                 'frontend-test': '前端测试环境',
                 'frontend-prod': '前端生产环境',
+                'backend-build': '云效运行',
                 'backend-test': '后端测试环境',
                 'backend-prod': '后端生产环境'
             };
@@ -587,6 +780,10 @@
             // 构建确认信息
             const taskListStr = selectedTasks.map(t => {
                 const name = taskNames[t.task_id] || t.task_id;
+                // 如果是云效运行任务，显示为"仅构建"
+                if (t.task_id === 'frontend-build' || t.task_id === 'backend-build') {
+                    return `${name} [仅构建]`;
+                }
                 const mode = t.run_build ? '[触发构建]' : '[使用最近构建]';
                 return `${name} ${mode}`;
             }).join('\n• ');
@@ -614,6 +811,13 @@
             }
 
             updateStatus({});
+
+            // 调试日志
+            console.log('准备发送部署请求:', {
+                tasks: selectedTasks,
+                project: project,
+                taskCount: selectedTasks.length
+            });
 
             try {
                 const response = await fetch('/api/deploy', {
@@ -658,6 +862,58 @@
                 }
                 updateStatus({});
             }
+        }
+
+        // 显示通知
+        function showNotification(project, type, title, message) {
+            // 确定通知样式和位置
+            const isSuccess = type === 'success';
+            let notificationClass, icon, containerId;
+
+            if (project === 'frontend') {
+                containerId = 'notificationLeft';
+                notificationClass = isSuccess ? 'notification-frontend-success' : 'notification-error';
+                icon = isSuccess ? '✅' : '❌';
+            } else {  // backend
+                containerId = 'notificationRight';
+                notificationClass = isSuccess ? 'notification-backend-success' : 'notification-error';
+                icon = isSuccess ? '✅' : '❌';
+            }
+
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.className = `notification ${notificationClass}`;
+
+            notification.innerHTML = `
+                <div class="notification-icon">${icon}</div>
+                <div class="notification-content">
+                    <div class="notification-title">${title}</div>
+                    <div class="notification-message">${message}</div>
+                </div>
+                <button class="notification-close" onclick="closeNotification(this)">×</button>
+            `;
+
+            // 添加到对应容器
+            const container = document.getElementById(containerId);
+            container.appendChild(notification);
+
+            // 5秒后自动关闭
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    closeNotification(notification.querySelector('.notification-close'));
+                }
+            }, 5000);
+        }
+
+        // 关闭通知
+        function closeNotification(closeBtn) {
+            const notification = closeBtn.closest('.notification');
+            notification.classList.add('hiding');
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
         }
 
         // 页面加载时获取当前状态

@@ -38,13 +38,13 @@ async def main():
         browser = await p.chromium.launch(
             headless=config.HEADLESS,
             # 后台运行
-            args=['--headless=new'],
+            # args=['--headless=new'],
             
             # 设置浏览器参数
-            # args=[
-            #     '--no-sandbox',
-            #     '--disable-setuid-sandbox',
-            # ]
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+            ]
         )
 
         # 创建浏览器上下文
