@@ -123,7 +123,7 @@ PAGE_LOAD_TIMEOUT = 60000
 
 # ==================== 浏览器配置 ====================
 # 是否使用无头模式(True=后台运行, False=显示浏览器窗口)
-HEADLESS = False
+HEADLESS = True
 
 # 失败时是否自动截图
 SCREENSHOT_ON_ERROR = True
