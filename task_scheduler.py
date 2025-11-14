@@ -182,7 +182,9 @@ class TaskScheduler:
 
             try:
                 # Step 1: 云效获取版本号 (始终执行,但可能跳过触发新构建)
-                cache_key = task.project
+                # 缓存 key 包含项目和环境，避免不同环境共用同一个 tag
+                cache_key = f"{task.project}-{task.env}"  # 例如: 'backend-test', 'backend-prod'
+                build_trigger_key = f"{task.project}-triggered"  # 标记是否已触发构建
                 cached_tag = self.tag_cache.get(cache_key)
                 tag = None
 
@@ -200,18 +202,36 @@ class TaskScheduler:
 
                 if task.run_build:
                     if cached_tag:
-                        self._log(f"{step_prefix}: 复用本次会话已构建的 {task.project} 版本号", "INFO")
+                        self._log(f"{step_prefix}: 复用本次会话已获取的 {task.name} 版本号", "INFO")
                         self._log(f"版本号: {cached_tag}", "INFO")
                         tag = cached_tag
                     else:
-                        self._log(f"{step_prefix}: 触发云效构建并获取镜像版本号", "INFO")
+                        # 检查是否已经触发过构建（针对同一个项目）
+                        already_triggered = self.tag_cache.get(build_trigger_key, False)
+
+                        self._log(f"{step_prefix}: 获取镜像版本号", "INFO")
                         self._log(f"云效地址: {yunxiao_url}", "INFO")
+
                         if task.project == 'backend':
+                            # 后端：第一次触发构建，后续跳过触发但仍然获取 tag
                             tag = await trigger_backend_build_and_fetch_tag(
-                                self.page, skip_trigger=False, log_job_keyword=log_job_keyword
+                                self.page,
+                                skip_trigger=already_triggered,  # 如果已触发过，则跳过触发
+                                log_job_keyword=log_job_keyword
                             )
                         else:
-                            tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=False)
+                            # 前端：同样的逻辑
+                            tag = await trigger_build_and_fetch_tag(
+                                self.page,
+                                skip_trigger=already_triggered
+                            )
+
+                        # 标记已触发构建
+                        if not already_triggered:
+                            self.tag_cache[build_trigger_key] = True
+                            self._log(f"✓ 已触发云效构建", "SUCCESS")
+
+                        # 缓存当前环境的 tag
                         self.tag_cache[cache_key] = tag
                         self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
                 else:
