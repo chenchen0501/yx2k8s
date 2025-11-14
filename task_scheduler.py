@@ -8,7 +8,7 @@ from datetime import datetime
 from playwright.async_api import async_playwright
 import config
 from utils import log
-from yunxiao import trigger_build_and_fetch_tag
+from yunxiao import trigger_build_and_fetch_tag, trigger_backend_build_and_fetch_tag
 from k8s import update_deployment_image
 
 
@@ -171,6 +171,15 @@ class TaskScheduler:
                 cached_tag = self.tag_cache.get(cache_key)
                 tag = None
 
+                # 根据项目类型选择触发函数和参数
+                if task.project == 'backend':
+                    # 后端：从配置中获取日志任务关键词
+                    log_job_keyword = task_config.get('log_job_keyword')
+                    if log_job_keyword:
+                        self._log(f"日志任务关键词: {log_job_keyword}", "INFO")
+                else:
+                    log_job_keyword = None
+
                 if task.run_build:
                     if cached_tag:
                         self._log(f"步骤 1/2: 复用本次会话已构建的 {task.project} 版本号", "INFO")
@@ -179,7 +188,12 @@ class TaskScheduler:
                     else:
                         self._log(f"步骤 1/2: 触发云效构建并获取镜像版本号", "INFO")
                         self._log(f"云效地址: {yunxiao_url}", "INFO")
-                        tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=False)
+                        if task.project == 'backend':
+                            tag = await trigger_backend_build_and_fetch_tag(
+                                self.page, skip_trigger=False, log_job_keyword=log_job_keyword
+                            )
+                        else:
+                            tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=False)
                         self.tag_cache[cache_key] = tag
                         self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
                 else:
@@ -190,7 +204,12 @@ class TaskScheduler:
                     else:
                         self._log(f"步骤 1/2: 从最近一次云效构建中获取镜像版本号 (跳过触发)", "INFO")
                         self._log(f"云效地址: {yunxiao_url}", "INFO")
-                        tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=True)
+                        if task.project == 'backend':
+                            tag = await trigger_backend_build_and_fetch_tag(
+                                self.page, skip_trigger=True, log_job_keyword=log_job_keyword
+                            )
+                        else:
+                            tag = await trigger_build_and_fetch_tag(self.page, skip_trigger=True)
                         self.tag_cache[cache_key] = tag
                         self._log(f"✅ 获取到版本号: {tag}", "SUCCESS")
 

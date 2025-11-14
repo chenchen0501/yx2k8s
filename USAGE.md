@@ -75,11 +75,15 @@ FRONTEND_PROD_TAG_PATTERN=javaly/jpms-web:(prod-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d
 BACKEND_TEST_YUNXIAO_URL=https://flow.aliyun.com/pipelines/YOUR_BACKEND_TEST_PIPELINE/current
 BACKEND_TEST_K8S_URL=https://k8s.dev.example.com/.../Deployment/jpms-server
 BACKEND_TEST_TAG_PATTERN=javaly/jpms-server:(dev-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})
+BACKEND_TEST_LOG_INDEX=0
+BACKEND_TEST_LOG_JOB=Java 构建Docker镜像并推送镜像仓库
 
 # 后端生产环境
 BACKEND_PROD_YUNXIAO_URL=https://flow.aliyun.com/pipelines/YOUR_BACKEND_PROD_PIPELINE/current
 BACKEND_PROD_K8S_URL=https://k8s.prod.example.com/.../Deployment/jpms-server
 BACKEND_PROD_TAG_PATTERN=javaly/jpms-server:(prod-\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})
+BACKEND_PROD_LOG_INDEX=1
+BACKEND_PROD_LOG_JOB=Java生产环境构建
 
 # ==================== K8s 登录凭证（按环境） ====================
 K8S_DEV_USERNAME=your-dev-username

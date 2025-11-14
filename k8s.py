@@ -78,17 +78,22 @@ async def update_deployment_image(page: Page, new_tag: str) -> None:
         # 4. 定位"新版本"输入框
         log(f"填入新版本号: {new_tag}", "PROGRESS")
 
+        # 从 K8S_URL 提取 deployment 名称（URL 最后一段）
+        # 例如: .../Deployment/jpms-web -> jpms-web
+        deployment_name = config.K8S_URL.rstrip('/').split('/')[-1]
+        log(f"Deployment 名称: {deployment_name}", "INFO")
+
         # 尝试多种方式定位输入框
         input_field = None
 
         # 优先：锁定包含目标容器名的行，再在该行的最后一列找输入框
         try:
-            row = page.locator('tr.el-table__row').filter(has_text='jpms-web').first
+            row = page.locator('tr.el-table__row').filter(has_text=deployment_name).first
             await row.wait_for(state='visible', timeout=4000)
             candidate = row.locator('td').last.locator('input.el-input__inner')
             await candidate.wait_for(state='visible', timeout=2000)
             input_field = candidate
-            log("通过包含 'jpms-web' 的表格行定位到输入框", "INFO")
+            log(f"通过包含 '{deployment_name}' 的表格行定位到输入框", "INFO")
         except Exception:
             pass
 

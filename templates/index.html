@@ -26,7 +26,7 @@
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 900px;
+            max-width: 1600px;
             width: 100%;
             overflow: hidden;
         }
@@ -50,6 +50,21 @@
 
         .content {
             padding: 30px;
+            display: flex;
+            gap: 20px;
+        }
+
+        .column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        @media (max-width: 1200px) {
+            .content {
+                flex-direction: column;
+            }
         }
 
         .status-card {
@@ -58,6 +73,10 @@
             padding: 20px;
             margin-bottom: 20px;
             border-left: 4px solid #667eea;
+        }
+
+        .status-card:last-child {
+            margin-bottom: 0;
         }
 
         .status-card h3 {
@@ -140,7 +159,8 @@
             border-radius: 12px;
             padding: 20px;
             margin-top: 20px;
-            max-height: 400px;
+            min-height: 300px;
+            max-height: 600px;
             overflow-y: auto;
             font-family: "Consolas", "Monaco", monospace;
             font-size: 13px;
@@ -319,90 +339,87 @@
         </div>
 
         <div class="content">
-            <!-- 状态卡片 -->
-            <div class="status-card">
-                <h3>📊 当前状态</h3>
-                <div class="status-text" id="statusText">系统就绪</div>
-                <div>
-                    <span class="status-badge status-idle" id="statusBadge">空闲</span>
+            <!-- 左侧：前端 -->
+            <div class="column">
+                <!-- 前端任务卡片 -->
+                <div class="status-card" style="border-left-color: #667eea;">
+                    <h3>🎯 前端部署 (Frontend)</h3>
+
+                    <div class="task-checkboxes">
+                        <label class="task-checkbox" style="background: #fff3e0; border: 1px solid #ff9800;">
+                            <input type="checkbox" id="frontendRunBuild" checked>
+                            <span style="font-weight: 600; color: #ff6f00;">🚀 云效运行</span>
+                        </label>
+                        <label class="task-checkbox">
+                            <input type="checkbox" class="task-select-frontend" value="frontend-test" checked>
+                            <span>测试环境 (Test)</span>
+                        </label>
+                        <label class="task-checkbox">
+                            <input type="checkbox" class="task-select-frontend" value="frontend-prod" checked>
+                            <span>生产环境 (Prod)</span>
+                        </label>
+                    </div>
+                    <div style="font-size: 12px; color: #666; margin-top: 8px; margin-left: 12px;">
+                        💡 取消"云效运行"将跳过触发新构建,使用最近一次构建的版本号
+                    </div>
+
+                    <!-- 前端部署按钮 -->
+                    <button class="deploy-btn" style="margin-top: 15px;" id="deployFrontendBtn" onclick="startDeployFrontend()">
+                        ▶ 开始前端部署
+                    </button>
+                </div>
+
+                <!-- 前端日志区域 -->
+                <div class="status-card" style="border-left-color: #667eea; flex: 1; display: flex; flex-direction: column;">
+                    <h3>📋 前端部署日志</h3>
+                    <div class="logs-container" id="frontendLogsContainer" style="flex: 1; margin-top: 0;">
+                        <div class="empty-logs">暂无日志</div>
+                    </div>
                 </div>
             </div>
 
-            <!-- 前端任务卡片 -->
-            <div class="status-card" style="border-left-color: #667eea;">
-                <h3>🎯 前端部署 (Frontend)</h3>
+            <!-- 右侧：后端 -->
+            <div class="column">
+                <!-- 后端任务卡片 -->
+                <div class="status-card" style="border-left-color: #4caf50;">
+                    <h3>🎯 后端部署 (Backend)</h3>
 
-                <div class="task-checkboxes">
-                    <label class="task-checkbox" style="background: #fff3e0; border: 1px solid #ff9800;">
-                        <input type="checkbox" id="frontendRunBuild" checked>
-                        <span style="font-weight: 600; color: #ff6f00;">🚀 云效运行</span>
-                    </label>
-                    <label class="task-checkbox">
-                        <input type="checkbox" class="task-select-frontend" value="frontend-test" checked>
-                        <span>测试环境 (Test)</span>
-                    </label>
-                    <label class="task-checkbox">
-                        <input type="checkbox" class="task-select-frontend" value="frontend-prod" checked>
-                        <span>生产环境 (Prod)</span>
-                    </label>
-                </div>
-                <div style="font-size: 12px; color: #666; margin-top: 8px; margin-left: 12px;">
-                    💡 取消"云效运行"将跳过触发新构建,使用最近一次构建的版本号
-                </div>
+                    <div class="task-checkboxes">
+                        <label class="task-checkbox" style="background: #fff3e0; border: 1px solid #ff9800;">
+                            <input type="checkbox" id="backendRunBuild" checked>
+                            <span style="font-weight: 600; color: #ff6f00;">🚀 云效运行</span>
+                        </label>
+                        <label class="task-checkbox">
+                            <input type="checkbox" class="task-select-backend" value="backend-test" checked>
+                            <span>测试环境 (Test)</span>
+                        </label>
+                        <label class="task-checkbox">
+                            <input type="checkbox" class="task-select-backend" value="backend-prod" checked>
+                            <span>生产环境 (Prod)</span>
+                        </label>
+                    </div>
+                    <div style="font-size: 12px; color: #666; margin-top: 8px; margin-left: 12px;">
+                        💡 取消"云效运行"将跳过触发新构建,使用最近一次构建的版本号
+                    </div>
 
-                <!-- 前端部署按钮 -->
-                <button class="deploy-btn" style="margin-top: 15px;" id="deployFrontendBtn" onclick="startDeployFrontend()">
-                    ▶ 开始前端部署
-                </button>
-            </div>
-
-            <!-- 后端任务卡片 -->
-            <div class="status-card" style="border-left-color: #4caf50;">
-                <h3>🎯 后端部署 (Backend)</h3>
-
-                <div class="task-checkboxes">
-                    <label class="task-checkbox" style="background: #fff3e0; border: 1px solid #ff9800;">
-                        <input type="checkbox" id="backendRunBuild" checked>
-                        <span style="font-weight: 600; color: #ff6f00;">🚀 云效运行</span>
-                    </label>
-                    <label class="task-checkbox">
-                        <input type="checkbox" class="task-select-backend" value="backend-test" checked>
-                        <span>测试环境 (Test)</span>
-                    </label>
-                    <label class="task-checkbox">
-                        <input type="checkbox" class="task-select-backend" value="backend-prod" checked>
-                        <span>生产环境 (Prod)</span>
-                    </label>
-                </div>
-                <div style="font-size: 12px; color: #666; margin-top: 8px; margin-left: 12px;">
-                    💡 取消"云效运行"将跳过触发新构建,使用最近一次构建的版本号
+                    <!-- 后端部署按钮 -->
+                    <button class="deploy-btn" style="margin-top: 15px;" id="deployBackendBtn" onclick="startDeployBackend()">
+                        ▶ 开始后端部署
+                    </button>
                 </div>
 
-                <!-- 后端部署按钮 -->
-                <button class="deploy-btn" style="margin-top: 15px;" id="deployBackendBtn" onclick="startDeployBackend()">
-                    ▶ 开始后端部署
-                </button>
-            </div>
-
-            <!-- 前端日志区域 -->
-            <div class="status-card" style="border-left-color: #667eea;">
-                <h3>📋 前端部署日志</h3>
-                <div class="logs-container" id="frontendLogsContainer">
-                    <div class="empty-logs">暂无日志</div>
-                </div>
-            </div>
-
-            <!-- 后端日志区域 -->
-            <div class="status-card" style="border-left-color: #4caf50;">
-                <h3>📋 后端部署日志</h3>
-                <div class="logs-container" id="backendLogsContainer">
-                    <div class="empty-logs">暂无日志</div>
+                <!-- 后端日志区域 -->
+                <div class="status-card" style="border-left-color: #4caf50; flex: 1; display: flex; flex-direction: column;">
+                    <h3>📋 后端部署日志</h3>
+                    <div class="logs-container" id="backendLogsContainer" style="flex: 1; margin-top: 0;">
+                        <div class="empty-logs">暂无日志</div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <div class="footer">
-            云效到 K8s 镜像版本自动更新工具 | Powered by Flask + Socket.IO
+            云效到 K8s 镜像版本自动更新工具 | Powered by CC
         </div>
     </div>
 

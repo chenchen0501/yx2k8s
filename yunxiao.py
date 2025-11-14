@@ -8,15 +8,48 @@ from utils import log, take_screenshot
 
 
 async def trigger_build_and_fetch_tag(page: Page, skip_trigger: bool = False) -> str:
+    """前端专用: 触发构建并获取 tag"""
+    return await _trigger_build_and_fetch_tag(page, skip_trigger=skip_trigger)
+
+
+async def trigger_backend_build_and_fetch_tag(
+    page: Page,
+    skip_trigger: bool = False,
+    log_job_keyword: str | None = None,
+) -> str:
+    """
+    后端专用: 触发构建并获取 tag
+
+    Args:
+        page: Playwright Page 对象
+        skip_trigger: 是否跳过触发构建
+        log_job_keyword: 日志任务关键词，用于定位特定任务的日志按钮（如 "Java生产环境构建"）
+    """
+    return await _trigger_build_and_fetch_tag(page, skip_trigger=skip_trigger, log_job_keyword=log_job_keyword)
+
+
+async def _trigger_build_and_fetch_tag(
+    page: Page,
+    skip_trigger: bool = False,
+    log_job_keyword: str | None = None,
+) -> str:
     """
     触发云效构建并获取镜像版本号
+
+    逻辑:
+    1. 触发构建(或跳过)
+    2. 等待运行成功
+    3. 根据 log_job_keyword 定位日志按钮（如果提供），否则使用第一个
+    4. 点击日志，展开详细日志，提取 tag
+    5. tag 格式: {IMAGE_REGISTRY}/{IMAGE_NAMESPACE}/项目名:分支-时间戳
 
     Args:
         page: Playwright Page 对象
         skip_trigger: 是否跳过触发构建,仅获取最近一次构建的版本号 (默认 False)
+        log_job_keyword: 日志任务关键词，用于定位特定任务的日志按钮（如 "Java生产环境构建"）
 
     Returns:
-        镜像版本号 (例: dev-2025-11-12-14-20-32)
+        镜像版本号 (例: dev-2025-11-13-17-53-56)
 
     Raises:
         Exception: 操作失败时抛出异常
@@ -72,24 +105,24 @@ async def trigger_build_and_fetch_tag(page: Page, skip_trigger: bool = False) ->
             await page.wait_for_selector('text=运行成功', timeout=config.BUILD_TIMEOUT)
 
             # 策略2: 循环检查,确保没有loading状态
-            log("等待所有阶段完成...", "WAITING")
-            max_wait_seconds = 60
-            for i in range(max_wait_seconds):
-                # 检查页面上是否还有 loading/spinning 类的元素
-                loading_count = await page.locator('[class*="loading"], [class*="spinning"], [class*="running"]').count()
+            # log("等待所有阶段完成...", "WAITING")
+            # max_wait_seconds = 60
+            # for i in range(max_wait_seconds):
+            #     # 检查页面上是否还有 loading/spinning 类的元素
+            #     loading_count = await page.locator('[class*="loading"], [class*="spinning"], [class*="running"]').count()
 
-                if loading_count == 0:
-                    log(f"所有阶段已完成(等待了{i+1}秒)", "SUCCESS")
-                    break
+            #     if loading_count == 0:
+            #         log(f"所有阶段已完成(等待了{i+1}秒)", "SUCCESS")
+            #         break
 
-                # 每秒检查一次
-                await page.wait_for_timeout(1000)
+            #     # 每秒检查一次
+            #     await page.wait_for_timeout(1000)
 
-                if i % 5 == 0 and i > 0:
-                    log(f"仍在等待阶段完成... ({i}秒)", "INFO")
-            else:
-                # 超过60秒仍未完成,继续执行(可能只是动画未消失)
-                log("等待超时,但继续尝试获取日志", "WARNING")
+            #     if i % 5 == 0 and i > 0:
+            #         log(f"仍在等待阶段完成... ({i}秒)", "INFO")
+            # else:
+            #     # 超过60秒仍未完成,继续执行(可能只是动画未消失)
+            #     log("等待超时,但继续尝试获取日志", "WARNING")
 
             log("构建已完成", "SUCCESS")
 
@@ -98,85 +131,99 @@ async def trigger_build_and_fetch_tag(page: Page, skip_trigger: bool = False) ->
             await take_screenshot(page, "build_timeout")
             raise Exception("构建超时")
 
-        # 7. 展开构建日志
-        log("查找并展开构建日志...", "PROGRESS")
+        # 7. 定位日志按钮
+        log("查找日志按钮...", "PROGRESS")
+        log_button = None
 
-        await page.locator('text=日志').first.click(timeout=5000)
+        # 如果提供了任务关键词，则定位包含该关键词的任务卡片中的日志按钮
+        if log_job_keyword:
+            log(f"根据关键词定位日志按钮: {log_job_keyword}", "INFO")
+            try:
+                # 定位包含关键词的任务卡片
+                # DOM: <div class="flow-job-new--hoverableWrapper--p4fKlSv"> 包含任务名称和日志按钮
+                job_card = page.locator('div.flow-job-new--hoverableWrapper--p4fKlSv').filter(has_text=log_job_keyword).first
+                if await job_card.count() > 0:
+                    # 在该任务卡片中查找日志按钮
+                    btn = job_card.locator('button:has-text("日志")').first
+                    if await btn.count() > 0:
+                        log_button = btn
+                        log(f"✓ 找到包含 '{log_job_keyword}' 的日志按钮", "SUCCESS")
+            except Exception as e:
+                log(f"通过关键词定位失败: {str(e)}", "WARNING")
+
+        # 如果没有提供关键词或定位失败，使用第一个日志按钮
+        if not log_button:
+            log_buttons = page.locator('button:has-text("日志")')
+            button_count = await log_buttons.count()
+            if button_count == 0:
+                log("未找到任何日志按钮", "ERROR")
+                await take_screenshot(page, "no_log_buttons")
+                raise Exception("未找到日志按钮")
+            log_button = log_buttons.first
+            log(f"使用第一个日志按钮 (共找到 {button_count} 个)", "INFO")
+
+        # 8. 点击日志按钮
+        await log_button.click(timeout=5000)
         await page.wait_for_timeout(2000)
 
-        # 策略: 依次尝试多种方式打开日志
-        log_opened = False
-
-        # 方式1: 尝试点击页面上任何包含"镜像构建"的可点击元素
+        # 9. 尝试展开详细日志
         try:
-            # 查找所有包含"镜像构建并推送"的元素
-            log_elements = page.get_by_text("镜像构建并推送", exact=False)
-            count = await log_elements.count()
-            log(f"找到 {count} 个包含'镜像构建并推送'的元素", "INFO")
-
-            if count > 0:
-                # 尝试点击第一个
+            log_elements = page.get_by_text(config.YUNXIAO_LOG_EXPAND_TEXT, exact=False)
+            if await log_elements.count() > 0:
                 await log_elements.first.click(timeout=5000)
                 await page.wait_for_timeout(2000)
-                log_opened = True
-                log("成功点击日志项", "SUCCESS")
+                log("已展开镜像构建日志", "INFO")
         except Exception as e:
-            log(f"方式1失败: {str(e)}", "WARNING")
+            log(f"展开详细日志失败(继续尝试): {str(e)}", "WARNING")
 
-       
-        # 8. 尝试获取版本号 - 多种方式
+        # 10. 从日志弹窗获取 tag
         log("尝试提取版本号...", "PROGRESS")
         tag = None
 
-        # 方式A: 如果日志已打开,从日志弹窗获取
-        if log_opened:
-            try:
-                # 右侧日志正文容器：class="log-panel__context right" 位于 .log-container__body 下
-                await page.wait_for_selector('.log-container__body .log-panel__context.right', state='visible', timeout=10000)
-                log_container = page.locator('.log-container__body .log-panel__context.right').first
+        # 定义统一的 tag 正则（固定格式）
+        # 格式: {IMAGE_REGISTRY}/{IMAGE_NAMESPACE}/项目名:分支-时间戳
+        # tag 部分匹配: 字母数字和连字符,遇到逗号、分号、空格、引号等停止
+        registry_escaped = config.IMAGE_REGISTRY.replace('.', r'\.')
+        unified_tag_pattern = rf'{registry_escaped}/{config.IMAGE_NAMESPACE}/[^:]+:([a-zA-Z0-9\-]+)'
 
-                # 滚动到日志底部(版本号通常在最后)
-                log("滚动日志到底部...", "INFO")
-                # 方式1：直接设置 scrollTop
-                await log_container.evaluate('el => { el.scrollTop = el.scrollHeight }')
-                await page.wait_for_timeout(600)  # 等待滚动完成
+        try:
+            await page.wait_for_selector('.log-container__body .log-panel__context.right', state='visible', timeout=10000)
+            log_container = page.locator('.log-container__body .log-panel__context.right').first
 
-                # 再次滚动确保到底
-                await log_container.evaluate('el => { el.scrollTop = el.scrollHeight }')
-                await page.wait_for_timeout(300)
+            # 滚动到日志底部
+            log("滚动日志到底部...", "INFO")
+            await log_container.evaluate('el => { el.scrollTop = el.scrollHeight }')
+            await page.wait_for_timeout(600)
+            await log_container.evaluate('el => { el.scrollTop = el.scrollHeight }')
+            await page.wait_for_timeout(300)
 
-                # 方式2（兜底）：将最后一行滚动到可视区域
-                try:
-                    last_line = page.locator('.log-container__body .log-panel__context.right > div').last
-                    await last_line.scroll_into_view_if_needed(timeout=2000)
-                    await page.wait_for_timeout(300)
-                except:
-                    pass
+            # 获取日志文本
+            log_text = await log_container.inner_text()
 
-                # 获取日志文本
-                log_text = await log_container.inner_text()
+            # 使用统一的 tag 正则提取
+            match = re.search(unified_tag_pattern, log_text)
+            if match:
+                tag = match.group(1)
+                log(f"✓ 从日志获取到版本号: {tag}", "SUCCESS")
+            else:
+                log("日志中未找到 tag", "WARNING")
 
-                match = re.search(config.TAG_PATTERN, log_text)
-                if match:
-                    tag = match.group(1)
-                    log(f"从日志弹窗获取到版本号: {tag}", "SUCCESS")
-            except Exception as e:
-                log(f"从日志弹窗获取版本号失败: {str(e)}", "WARNING")
+        except Exception as e:
+            log(f"从日志获取 tag 失败: {str(e)}", "WARNING")
 
-        # 如果所有方式都失败
+        # 11. 关闭日志弹窗
+        try:
+            close_button = page.locator('.next-dialog >> button.next-dialog-close')
+            await close_button.click(timeout=3000)
+            await page.wait_for_timeout(500)
+        except:
+            pass
+
+        # 12. 验证结果
         if not tag:
-            log("所有方式都未能获取版本号,保存截图...", "ERROR")
+            log("未能获取到版本号", "ERROR")
             await take_screenshot(page, "tag_not_found")
             raise Exception("无法获取镜像版本号")
-
-        # 9. 关闭可能打开的日志弹窗
-        if log_opened:
-            try:
-                close_button = page.locator('.next-dialog >> button.next-dialog-close')
-                await close_button.click(timeout=3000)
-                log("已关闭日志弹窗", "INFO")
-            except:
-                pass  # 如果关闭失败,忽略
 
         return tag
 
